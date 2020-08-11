@@ -211,10 +211,10 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
         AVURLAsset *asset = [AVURLAsset assetWithURL:url];
         NSString *fileName = [[asset.URL path] lastPathComponent];
 
-        [self handleVideo:asset
-             withFileName:fileName
-      withLocalIdentifier:nil
-               completion:^(NSDictionary* video) {
+        [self handleAnyVideo:asset
+                withFileName:fileName
+         withLocalIdentifier:nil
+                  completion:^(NSDictionary* video) {
                    dispatch_async(dispatch_get_main_queue(), ^{
                    if (video == nil) {
                        [picker dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
@@ -460,6 +460,35 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     });
 }
 
+- (void) handleAnyVideo:(AVAsset*)asset withFileName:(NSString*)fileName withLocalIdentifier:(NSString*)localIdentifier completion:(void (^)(NSDictionary* image))completion {
+    
+    BOOL isSlowMotionVideo = ([asset isKindOfClass:[AVComposition class]] && ((AVComposition *)asset).tracks.count == 2);
+    
+    if (isSlowMotionVideo) {
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *documentsDirectory = paths.firstObject;
+        NSString *myPathDocs =  [documentsDirectory stringByAppendingPathComponent:[NSString stringWithFormat:@"mergeSlowMoVideo-%d.mov",arc4random() % 1000]];
+        NSURL *url = [NSURL fileURLWithPath:myPathDocs];
+
+        AVAssetExportSession *exporter = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetHighestQuality];
+        exporter.outputURL = url;
+        exporter.outputFileType = AVFileTypeQuickTimeMovie;
+        exporter.shouldOptimizeForNetworkUse = YES;
+        
+        [exporter exportAsynchronouslyWithCompletionHandler:^{
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (exporter.status == AVAssetExportSessionStatusCompleted) {
+                    NSURL *url = exporter.outputURL;
+                    AVAsset *slomoasset = [AVAsset assetWithURL:url];
+                    [self handleVideo:slomoasset withFileName:fileName withLocalIdentifier:localIdentifier completion:completion];
+                }
+            });
+        }];
+    } else {
+        [self handleVideo:asset withFileName:fileName withLocalIdentifier:localIdentifier completion:completion];
+    }
+}
+
 - (void) handleVideo:(AVAsset*)asset withFileName:(NSString*)fileName withLocalIdentifier:(NSString*)localIdentifier completion:(void (^)(NSDictionary* image))completion {
     NSURL *sourceURL = [(AVURLAsset *)asset URL];
 
@@ -502,7 +531,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
 - (void) getVideoAsset:(PHAsset*)forAsset completion:(void (^)(NSDictionary* image))completion {
     PHImageManager *manager = [PHImageManager defaultManager];
     PHVideoRequestOptions *options = [[PHVideoRequestOptions alloc] init];
-    options.version = PHVideoRequestOptionsVersionOriginal;
+    options.version = PHVideoRequestOptionsVersionCurrent;
     options.networkAccessAllowed = YES;
 
     [manager
@@ -510,10 +539,10 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
      options:options
      resultHandler:^(AVAsset * asset, AVAudioMix * audioMix,
                      NSDictionary *info) {
-         [self handleVideo:asset
-              withFileName:[forAsset valueForKey:@"filename"]
-       withLocalIdentifier:forAsset.localIdentifier
-                completion:completion
+         [self handleAnyVideo:asset
+                 withFileName:[forAsset valueForKey:@"filename"]
+          withLocalIdentifier:forAsset.localIdentifier
+                   completion:completion
          ];
      }];
 }
