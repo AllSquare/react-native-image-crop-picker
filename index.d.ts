@@ -1,4 +1,4 @@
-declare module "react-native-image-crop-picker" {
+declare module "@allsquare/react-native-image-crop-picker" {
     export interface Options {
         cropping?: boolean;
         width?: number;
